@@ -4,69 +4,105 @@ import (
 	"bufio"
 	"fmt"
 	"md-manual-tool/pkg/config"
-	"md-manual-tool/pkg/processor"
+	"md-manual-tool/pkg/constants"
+	"md-manual-tool/pkg/document"
+	"md-manual-tool/pkg/input"
+	"md-manual-tool/pkg/ui"
+	"md-manual-tool/pkg/validator"
 	"os"
-	"strings"
 )
 
-func main() {
-	reader := bufio.NewReader(os.Stdin)
-
-	fmt.Print("请输入模板文件路径（如 templates/template.md）：")
-	templatePath, _ := reader.ReadString('\n')
-	templatePath = strings.TrimSpace(templatePath)
-
-	fmt.Print("请输入配置文件路径（如 D:/config.yaml，直接回车则使用工具的当前目录的config.yaml）：")
-	configPath, _ := reader.ReadString('\n')
-	configPath = strings.TrimSpace(configPath)
-
-	// 如果用户没有输入配置文件路径，则默认使用当前目录的config.yaml
-	if configPath == "" {
-		configPath = "config.yaml"
-		fmt.Printf("使用默认配置文件：%s\n", configPath)
-	}
-
-	fmt.Print("请输入输出文件路径（如 output/result.md）：")
-	outputPath, _ := reader.ReadString('\n')
-	outputPath = strings.TrimSpace(outputPath)
-
-	// 检查文件是否存在
-	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
-		fmt.Printf("错误：模板文件不存在: %s\n", templatePath)
-		fmt.Printf("当前工作目录: %s\n", getCurrentDir())
-		return
-	}
-
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		fmt.Printf("错误：配置文件不存在: %s\n", configPath)
-		fmt.Printf("当前工作目录: %s\n", getCurrentDir())
-		return
-	}
-
-	// 读取配置文件
-	cfg, err := config.ReadConfig(configPath)
-	if err != nil {
-		fmt.Printf("读取配置文件失败: %v\n", err)
-		return
-	}
-
-	// 创建处理器
-	proc := processor.NewProcessor(cfg)
-
-	// 处理整个流程
-	if err := proc.Process(templatePath, outputPath); err != nil {
-		fmt.Printf("处理失败: %v\n", err)
-		return
-	}
-
-	fmt.Printf("文件生成成功！输出路径：%s\n", outputPath)
+// Application 应用程序结构体
+type Application struct {
+	collector    *input.Collector
+	validator    *validator.Validator
+	configMgr    *config.Manager
+	docProcessor *document.Processor
+	ui           *ui.Interface
 }
 
-// getCurrentDir 获取当前工作目录
-func getCurrentDir() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "无法获取当前目录"
+// NewApplication 创建新的应用程序实例
+func NewApplication() *Application {
+	reader := bufio.NewReader(os.Stdin)
+
+	return &Application{
+		collector:    input.NewCollector(reader),
+		validator:    validator.NewValidator(),
+		configMgr:    config.NewManager(),
+		docProcessor: document.NewProcessor(),
+		ui:           ui.NewInterface(),
 	}
-	return dir
+}
+
+// Run 运行应用程序
+func (app *Application) Run() error {
+	// 1. 收集用户输入
+	inputData, err := app.collectInputs()
+	if err != nil {
+		return fmt.Errorf(constants.ErrCollectInputs, err)
+	}
+
+	// 2. 验证输入
+	if err := app.validateInputs(inputData); err != nil {
+		return fmt.Errorf(constants.ErrValidateInputs, err)
+	}
+
+	// 3. 加载和处理配置
+	configData, err := app.loadConfig(inputData)
+	if err != nil {
+		return fmt.Errorf(constants.ErrLoadConfig, err)
+	}
+
+	// 4. 处理文档
+	if err := app.processDocument(configData); err != nil {
+		return fmt.Errorf(constants.ErrProcessDocument, err)
+	}
+
+	// 5. 显示成功信息
+	app.ui.ShowSuccess(configData.OutputPath)
+	return nil
+}
+
+// collectInputs 收集用户输入
+func (app *Application) collectInputs() (*input.InputData, error) {
+	return app.collector.CollectAll()
+}
+
+// validateInputs 验证输入
+func (app *Application) validateInputs(inputData *input.InputData) error {
+	// 验证文件存在性
+	result := app.validator.ValidateInputs(inputData.TemplatePath, inputData.ConfigPath)
+	if !result.IsValid {
+		app.ui.ShowValidationErrors(result.Errors)
+		return fmt.Errorf("输入验证失败")
+	}
+
+	// 验证版本号格式
+	if err := app.validator.ValidateVersionFormat(inputData.Version); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// loadConfig 加载配置
+func (app *Application) loadConfig(inputData *input.InputData) (*config.ConfigData, error) {
+	return app.configMgr.LoadAndProcessConfig(
+		inputData.ConfigPath,
+		inputData.TemplatePath,
+		inputData.Version,
+	)
+}
+
+// processDocument 处理文档
+func (app *Application) processDocument(configData *config.ConfigData) error {
+	return app.docProcessor.ProcessDocument(configData)
+}
+
+func main() {
+	app := NewApplication()
+	if err := app.Run(); err != nil {
+		fmt.Printf("错误：%v\n", err)
+		os.Exit(1)
+	}
 }

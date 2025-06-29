@@ -88,36 +88,162 @@ func WriteFile(path string, content []byte) error {
 	return os.WriteFile(path, content, 0644)
 }
 
+// ReadFile 读取文件内容
+func ReadFile(path string) ([]byte, error) {
+	// 处理长路径
+	if len(path) > 260 {
+		// 添加长路径前缀
+		if !strings.HasPrefix(path, `\\?\`) {
+			path = `\\?\` + path
+		}
+	}
+	return os.ReadFile(path)
+}
+
 // ExtractImages 从Markdown内容中提取图片路径
 func ExtractImages(content string) []string {
+	fmt.Println("ExtractImages收到的content内容如下:\n" + content)
+
 	// 支持的图片格式
 	imagePatterns := []string{
-		`\.png`,  // PNG格式
-		`\.jpg`,  // JPG格式
-		`\.jpeg`, // JPEG格式
-		`\.gif`,  // GIF格式
-		`\.bmp`,  // BMP格式
-		`\.webp`, // WebP格式
-		`\.svg`,  // SVG格式
-		`\.ico`,  // ICO格式
-		`\.tiff`, // TIFF格式
-		`\.tif`,  // TIF格式
+		`png`,  // PNG格式
+		`jpg`,  // JPG格式
+		`jpeg`, // JPEG格式
+		`gif`,  // GIF格式
+		`bmp`,  // BMP格式
+		`webp`, // WebP格式
+		`svg`,  // SVG格式
+		`ico`,  // ICO格式
+		`tiff`, // TIFF格式
+		`tif`,  // TIF格式
 	}
 
-	// 构建正则表达式
-	pattern := `!\[.*?\]\((.*?(` + strings.Join(imagePatterns, "|") + `))\)`
+	// 使用(?s)让.匹配换行，.+?非贪婪匹配括号内内容
+	pattern := `(?s)!\[.*?\]\((.+?\.(?:` + strings.Join(imagePatterns, "|") + `)(?:\?[^)]*)?)\)`
 	re := regexp.MustCompile(pattern)
 	matches := re.FindAllStringSubmatch(content, -1)
 
 	var paths []string
 	for _, match := range matches {
 		if len(match) > 1 {
-			// 处理相对路径中的反斜杠
-			path := strings.ReplaceAll(match[1], "\\", "/")
+			// 保持原始路径格式，只去除首尾空格
+			path := strings.TrimSpace(match[1])
 			paths = append(paths, path)
 		}
 	}
+
+	// 打印提取到的图片路径
+	fmt.Printf("提取到的图片路径数量: %d\n", len(paths))
+	for i, path := range paths {
+		fmt.Printf("图片路径 %d: %s\n", i+1, path)
+	}
+
 	return paths
+}
+
+// normalizeImagePath 标准化图片路径
+func normalizeImagePath(path string) string {
+	// 移除URL参数（如 ?v=123）
+	if idx := strings.Index(path, "?"); idx != -1 {
+		path = path[:idx]
+	}
+
+	// 处理反斜杠，统一为斜杠
+	path = strings.ReplaceAll(path, "\\", "/")
+
+	// 移除开头的 ./
+	if strings.HasPrefix(path, "./") {
+		path = path[2:]
+	}
+
+	// 移除开头的 ../
+	if strings.HasPrefix(path, "../") {
+		path = path[3:]
+	}
+
+	return path
+}
+
+// resolveImagePath 解析图片路径（支持绝对路径和相对路径）
+func resolveImagePath(imgPath, templatePath string) (string, error) {
+	fmt.Printf("解析图片路径: %s (相对于模板: %s)\n", imgPath, templatePath)
+
+	// 如果已经是绝对路径，直接返回
+	if filepath.IsAbs(imgPath) {
+		fmt.Printf("图片路径是绝对路径: %s\n", imgPath)
+		return imgPath, nil
+	}
+
+	// 处理相对路径 - 保持原始格式，但尝试多种解析方式
+	templateDir := filepath.Dir(templatePath)
+
+	// 1. 直接拼接模板目录和图片路径
+	resolvedPath := filepath.Join(templateDir, imgPath)
+	if _, err := os.Stat(resolvedPath); err == nil {
+		fmt.Printf("找到图片文件: %s\n", resolvedPath)
+		return resolvedPath, nil
+	}
+
+	// 2. 处理以 ./ 开头的路径
+	if strings.HasPrefix(imgPath, "./") {
+		relativePath := imgPath[2:] // 移除 ./
+		resolvedPath = filepath.Join(templateDir, relativePath)
+		if _, err := os.Stat(resolvedPath); err == nil {
+			fmt.Printf("找到图片文件 (./): %s\n", resolvedPath)
+			return resolvedPath, nil
+		}
+	}
+
+	// 3. 处理以 ../ 开头的路径
+	if strings.HasPrefix(imgPath, "../") {
+		relativePath := imgPath[3:] // 移除 ../
+		parentDir := filepath.Dir(templateDir)
+		resolvedPath = filepath.Join(parentDir, relativePath)
+		if _, err := os.Stat(resolvedPath); err == nil {
+			fmt.Printf("找到图片文件 (../): %s\n", resolvedPath)
+			return resolvedPath, nil
+		}
+	}
+
+	// 4. 尝试相对于当前工作目录
+	currentDir, err := os.Getwd()
+	if err == nil {
+		resolvedPath = filepath.Join(currentDir, imgPath)
+		if _, err := os.Stat(resolvedPath); err == nil {
+			fmt.Printf("在当前目录找到图片文件: %s\n", resolvedPath)
+			return resolvedPath, nil
+		}
+	}
+
+	// 5. 尝试常见的图片目录
+	commonDirs := []string{"images", "img", "assets", "pics", "pictures"}
+	for _, dir := range commonDirs {
+		// 相对于模板目录
+		resolvedPath = filepath.Join(templateDir, dir, filepath.Base(imgPath))
+		if _, err := os.Stat(resolvedPath); err == nil {
+			fmt.Printf("在 %s 目录找到图片文件: %s\n", dir, resolvedPath)
+			return resolvedPath, nil
+		}
+
+		// 相对于当前工作目录
+		resolvedPath = filepath.Join(currentDir, dir, filepath.Base(imgPath))
+		if _, err := os.Stat(resolvedPath); err == nil {
+			fmt.Printf("在当前目录的 %s 目录找到图片文件: %s\n", dir, resolvedPath)
+			return resolvedPath, nil
+		}
+	}
+
+	// 6. 尝试处理Windows路径分隔符
+	if strings.Contains(imgPath, "\\") {
+		normalizedPath := strings.ReplaceAll(imgPath, "\\", "/")
+		resolvedPath = filepath.Join(templateDir, normalizedPath)
+		if _, err := os.Stat(resolvedPath); err == nil {
+			fmt.Printf("找到图片文件 (Windows路径): %s\n", resolvedPath)
+			return resolvedPath, nil
+		}
+	}
+
+	return "", fmt.Errorf("无法找到图片文件: %s", imgPath)
 }
 
 // UpdateImagePaths 更新Markdown内容中的图片路径
@@ -140,7 +266,7 @@ func UpdateImagePaths(content string, mdPath string) string {
 	}
 
 	// 构建正则表达式
-	pattern := `(!\[.*?\]\()(.*?)(` + strings.Join(imagePatterns, "|") + `)(\))`
+	pattern := `!\[.*?\]\(([^\\)]+?(` + strings.Join(imagePatterns, "|") + `)(\\?[^\\)]*)?)\)`
 	re := regexp.MustCompile(pattern)
 
 	// 替换图片路径
@@ -160,6 +286,76 @@ func UpdateImagePaths(content string, mdPath string) string {
 	})
 
 	return updatedContent
+}
+
+// CopyImagesFromTemplate 从模板文件复制图片到新目录并更新Markdown内容
+func CopyImagesFromTemplate(templatePath, outputPath string, imagePaths []string, content string) (string, error) {
+	fmt.Printf("开始处理图片复制...\n")
+	fmt.Printf("模板文件路径: %s\n", templatePath)
+	fmt.Printf("输出文件路径: %s\n", outputPath)
+	fmt.Printf("图片路径数量: %d\n", len(imagePaths))
+
+	// 获取输出文件名（不含扩展名）
+	outputName := strings.TrimSuffix(filepath.Base(outputPath), filepath.Ext(outputPath))
+	fmt.Printf("输出文件名: %s\n", outputName)
+
+	// 创建图片目录
+	imageDir := filepath.Join(filepath.Dir(outputPath), outputName+".assets")
+	fmt.Printf("图片目录: %s\n", imageDir)
+	err := EnsureDir(imageDir)
+	if err != nil {
+		return content, fmt.Errorf("创建图片目录失败: %v", err)
+	}
+
+	// 复制每个图片
+	for i, imgPath := range imagePaths {
+		fmt.Printf("\n处理图片 %d/%d: %s\n", i+1, len(imagePaths), imgPath)
+
+		// 解析图片路径
+		absImgPath, err := resolveImagePath(imgPath, templatePath)
+		if err != nil {
+			fmt.Printf("错误: 无法解析图片路径: %v\n", err)
+			return content, fmt.Errorf("解析图片路径失败 %s: %v", imgPath, err)
+		}
+
+		// 处理长路径
+		if len(absImgPath) > 260 {
+			if !strings.HasPrefix(absImgPath, `\\?\`) {
+				absImgPath = `\\?\` + absImgPath
+			}
+		}
+
+		// 检查源文件是否存在
+		if _, err := os.Stat(absImgPath); os.IsNotExist(err) {
+			fmt.Printf("错误: 源图片文件不存在: %s\n", absImgPath)
+			return content, fmt.Errorf("读取图片失败 %s: 文件不存在", imgPath)
+		}
+
+		// 读取源图片
+		imgContent, err := os.ReadFile(absImgPath)
+		if err != nil {
+			fmt.Printf("错误: 读取图片文件失败: %v\n", err)
+			return content, fmt.Errorf("读取图片失败 %s: %v", imgPath, err)
+		}
+		fmt.Printf("成功读取图片，大小: %d 字节\n", len(imgContent))
+
+		// 写入新图片
+		newImgPath := filepath.Join(imageDir, filepath.Base(imgPath))
+		fmt.Printf("新图片路径: %s\n", newImgPath)
+		err = WriteFile(newImgPath, imgContent)
+		if err != nil {
+			fmt.Printf("错误: 写入图片文件失败: %v\n", err)
+			return content, fmt.Errorf("写入图片失败 %s: %v", newImgPath, err)
+		}
+		fmt.Printf("成功写入图片: %s\n", newImgPath)
+	}
+
+	// 更新Markdown内容中的图片路径
+	fmt.Printf("\n更新Markdown内容中的图片路径...\n")
+	updatedContent := UpdateImagePaths(content, outputPath)
+	fmt.Printf("图片路径更新完成\n")
+
+	return updatedContent, nil
 }
 
 // CopyImages 复制图片到新目录并更新Markdown内容
