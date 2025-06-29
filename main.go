@@ -1,59 +1,72 @@
 package main
 
 import (
-	"flag"
+	"bufio"
 	"fmt"
-	"md-manual-tool/config"
-	"md-manual-tool/template"
-	"md-manual-tool/utils"
+	"md-manual-tool/pkg/config"
+	"md-manual-tool/pkg/processor"
+	"os"
+	"strings"
 )
 
 func main() {
-	// 定义命令行参数
-	templatePath := flag.String("template", "templates/template.md", "模板文件路径")
-	configPath := flag.String("config", "configs/config.yaml", "配置文件路径")
-	outputPath := flag.String("output", "output/result.md", "输出文件路径")
-	flag.Parse()
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Print("请输入模板文件路径（如 templates/template.md）：")
+	templatePath, _ := reader.ReadString('\n')
+	templatePath = strings.TrimSpace(templatePath)
+
+	fmt.Print("请输入配置文件路径（如 D:/config.yaml，直接回车则使用工具的当前目录的config.yaml）：")
+	configPath, _ := reader.ReadString('\n')
+	configPath = strings.TrimSpace(configPath)
+
+	// 如果用户没有输入配置文件路径，则默认使用当前目录的config.yaml
+	if configPath == "" {
+		configPath = "config.yaml"
+		fmt.Printf("使用默认配置文件：%s\n", configPath)
+	}
+
+	fmt.Print("请输入输出文件路径（如 output/result.md）：")
+	outputPath, _ := reader.ReadString('\n')
+	outputPath = strings.TrimSpace(outputPath)
+
+	// 检查文件是否存在
+	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
+		fmt.Printf("错误：模板文件不存在: %s\n", templatePath)
+		fmt.Printf("当前工作目录: %s\n", getCurrentDir())
+		return
+	}
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		fmt.Printf("错误：配置文件不存在: %s\n", configPath)
+		fmt.Printf("当前工作目录: %s\n", getCurrentDir())
+		return
+	}
 
 	// 读取配置文件
-	config, err := config.ReadConfig(*configPath)
+	cfg, err := config.ReadConfig(configPath)
 	if err != nil {
 		fmt.Printf("读取配置文件失败: %v\n", err)
 		return
 	}
 
-	// 渲染模板
-	result, err := template.Render(*templatePath, config.Variables)
-	if err != nil {
-		fmt.Printf("渲染模板失败: %v\n", err)
+	// 创建处理器
+	proc := processor.NewProcessor(cfg)
+
+	// 处理整个流程
+	if err := proc.Process(templatePath, outputPath); err != nil {
+		fmt.Printf("处理失败: %v\n", err)
 		return
 	}
 
-	// 确保输出目录存在
-	err = utils.EnsureDir(*outputPath)
+	fmt.Printf("文件生成成功！输出路径：%s\n", outputPath)
+}
+
+// getCurrentDir 获取当前工作目录
+func getCurrentDir() string {
+	dir, err := os.Getwd()
 	if err != nil {
-		fmt.Printf("创建输出目录失败: %v\n", err)
-		return
+		return "无法获取当前目录"
 	}
-
-	// 提取并复制图片，并更新Markdown内容
-	imagePaths := utils.ExtractImages(string(result))
-	if len(imagePaths) > 0 {
-		updatedContent, err := utils.CopyImages(*outputPath, imagePaths, string(result))
-		if err != nil {
-			fmt.Printf("复制图片失败: %v\n", err)
-			return
-		}
-		result = []byte(updatedContent)
-		fmt.Printf("成功复制 %d 张图片\n", len(imagePaths))
-	}
-
-	// 写入结果文件
-	err = utils.WriteFile(*outputPath, result)
-	if err != nil {
-		fmt.Printf("写入结果文件失败: %v\n", err)
-		return
-	}
-
-	fmt.Printf("文件生成成功！输出路径：%s\n", *outputPath)
+	return dir
 }

@@ -65,12 +65,15 @@ md-manual-tool.exe -help
 ├── md-manual-tool.exe  # 可执行文件
 ├── go.mod              # Go模块文件
 ├── main.go             # 主程序文件
-├── config/             # 配置模块
-│   └── config.go
-├── template/           # 模板模块
-│   └── template.go
-├── utils/              # 工具模块
-│   └── utils.go
+├── pkg/                # 核心包
+│   ├── config/         # 配置模块
+│   │   └── config.go
+│   ├── template/       # 模板模块
+│   │   └── template.go
+│   ├── utils/          # 工具模块
+│   │   └── utils.go
+│   └── processor/      # 处理器模块
+│       └── processor.go
 ├── templates/          # 模板文件目录
 │   └── template.md
 ├── configs/            # 配置文件目录
@@ -108,4 +111,21 @@ md-manual-tool.exe -help
 ```yaml
 title: 示例项目
 description: 这是一个示例描述
-``` 
+```
+
+## 代码架构
+
+### 模块化设计
+项目采用模块化设计，主要包含以下模块：
+
+1. **config模块**：负责配置文件的读取和解析
+2. **template模块**：负责模板的渲染
+3. **utils模块**：提供文件操作和图片处理工具函数
+4. **processor模块**：协调各个模块，处理整个工作流程
+
+### 主要特性
+- 支持Windows长路径（超过260字符）
+- 自动处理图片复制和路径更新
+- 支持多种图片格式
+- 模块化设计，易于维护和扩展
+- 完善的错误处理机制 

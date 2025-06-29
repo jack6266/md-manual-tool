@@ -1,0 +1,13 @@
+title: 易立德产品数据管理软件(eRDCloud-PDM)部署手册
+projectName: eRDCloud-PDM
+version: 3.1.2
+author: 易立德技术团队
+createDate: 2024-03-20
+description: 易立德产品数据管理软件(eRDCloud-PDM)是一款专业的产品数据管理解决方案，帮助企业高效管理产品全生命周期数据，包括产品设计、版本控制、工作流程管理等功能。
+mainFeatures: 产品数据管理、版本控制、工作流程管理、权限管理、数据备份与恢复
+techStack: Go语言、MySQL数据库、Redis缓存、Docker容器化
+installation: 1. 确保系统满足最低要求\n2. 下载安装包\n3. 运行安装程序\n4. 配置数据库连接\n5. 启动服务
+usage: 详细使用说明请参考用户手册或联系技术支持获取帮助。
+email: support@example.com
+phone: 400-123-4567
+generatedTime: 2024-03-20 14:30:00 
