@@ -1,2 +1,11 @@
 产品名称: 测试产品
-公司名称: 测试公司 
+公司名称: 测试公司
+variables:
+  title: "测试文档"
+  projectName: "测试项目"
+  version: "1.0.0"
+  author: "测试作者"
+  description: "这是一个测试文档"
+  installation: "安装说明"
+  usage: "使用说明"
+  generatedTime: "2024-01-01" 

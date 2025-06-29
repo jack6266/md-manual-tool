@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"md-manual-tool/pkg/constants"
 	"md-manual-tool/pkg/utils"
+	"os"
+	"path/filepath"
 )
 
 // Manager 配置管理器
@@ -40,8 +42,15 @@ func (m *Manager) LoadAndProcessConfig(configPath, templatePath, version string)
 		fmt.Printf(constants.MsgVersionAdded, version)
 	}
 
-	// 生成输出文件路径
-	outputPath := m.versionUtils.GenerateOutputFilename(templatePath, version)
+	// 生成输出文件名
+	outputFilename := m.versionUtils.GenerateOutputFilename(templatePath, version)
+
+	// 创建输出目录路径：当前目录/output/
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("获取当前工作目录失败: %v", err)
+	}
+	outputPath := filepath.Join(currentDir, "output", outputFilename)
 
 	return &ConfigData{
 		Config:       cfg,
