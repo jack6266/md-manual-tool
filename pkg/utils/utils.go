@@ -118,16 +118,40 @@ func ExtractImages(content string) []string {
 		`tif`,  // TIF格式
 	}
 
-	// 使用(?s)让.匹配换行，.+?非贪婪匹配括号内内容
-	pattern := `(?s)!\[.*?\]\((.+?\.(?:` + strings.Join(imagePatterns, "|") + `)(?:\?[^)]*)?)\)`
-	re := regexp.MustCompile(pattern)
-	matches := re.FindAllStringSubmatch(content, -1)
-
 	var paths []string
-	for _, match := range matches {
+
+	// 1. 匹配Markdown格式图片 ![alt](path)
+	mdPattern := `(?s)!\[.*?\]\((.+?\.(?:` + strings.Join(imagePatterns, "|") + `)(?:\?[^)]*)?)\)`
+	mdRe := regexp.MustCompile(mdPattern)
+	mdMatches := mdRe.FindAllStringSubmatch(content, -1)
+
+	for _, match := range mdMatches {
 		if len(match) > 1 {
 			// 保持原始路径格式，只去除首尾空格
 			path := strings.TrimSpace(match[1])
+			paths = append(paths, path)
+		}
+	}
+
+	// 2. 匹配HTML格式图片 <img src="path" ... />
+	// 更宽松的正则表达式，可以匹配各种格式的HTML图片标签
+	htmlPattern := `<img\s+[^>]*?src=["']([^"']+?\.(?:` + strings.Join(imagePatterns, "|") + `)(?:[^"'>]*)?)["'][^>]*?>`
+	htmlRe := regexp.MustCompile(htmlPattern)
+	htmlMatches := htmlRe.FindAllStringSubmatch(content, -1)
+
+	for _, match := range htmlMatches {
+		if len(match) > 1 {
+			// 保持原始路径格式，只去除首尾空格和多余的.png等后缀
+			path := strings.TrimSpace(match[1])
+
+			// 修复错误格式的路径，如果路径末尾有多余的.png等后缀
+			for _, ext := range imagePatterns {
+				doubleExt := "." + ext + "." + ext
+				if strings.HasSuffix(path, doubleExt) {
+					path = path[:len(path)-len("."+ext)]
+				}
+			}
+
 			paths = append(paths, path)
 		}
 	}
@@ -265,14 +289,15 @@ func UpdateImagePaths(content string, mdPath string) string {
 		`\.tif`,  // TIF格式
 	}
 
-	// 构建正则表达式
-	pattern := `!\[.*?\]\(([^\\)]+?(` + strings.Join(imagePatterns, "|") + `)(\\?[^\\)]*)?)\)`
-	re := regexp.MustCompile(pattern)
+	updatedContent := content
 
-	// 替换图片路径
-	updatedContent := re.ReplaceAllStringFunc(content, func(match string) string {
+	// 1. 更新Markdown格式的图片路径
+	mdPattern := `!\[.*?\]\(([^\\)]+?(` + strings.Join(imagePatterns, "|") + `)(\\?[^\\)]*)?)\)`
+	mdRe := regexp.MustCompile(mdPattern)
+
+	updatedContent = mdRe.ReplaceAllStringFunc(updatedContent, func(match string) string {
 		// 提取图片路径
-		parts := re.FindStringSubmatch(match)
+		parts := mdRe.FindStringSubmatch(match)
 		if len(parts) < 4 {
 			return match
 		}
@@ -283,6 +308,35 @@ func UpdateImagePaths(content string, mdPath string) string {
 
 		// 返回更新后的图片标记
 		return parts[1] + newPath + parts[4]
+	})
+
+	// 2. 更新HTML格式的图片路径
+	// 更宽松的正则表达式，可以匹配各种格式的HTML图片标签
+	htmlPattern := `(<img\s+[^>]*?src=)["']([^"']+?\.(?:` + strings.Join(imagePatterns, "|") + `)(?:[^"'>]*)?)(["'][^>]*?>)`
+	htmlRe := regexp.MustCompile(htmlPattern)
+
+	updatedContent = htmlRe.ReplaceAllStringFunc(updatedContent, func(match string) string {
+		// 提取图片路径
+		parts := htmlRe.FindStringSubmatch(match)
+		if len(parts) < 4 {
+			return match
+		}
+
+		// 处理路径中可能存在的错误格式
+		path := parts[2]
+		for _, ext := range imagePatterns {
+			// 移除可能的双后缀
+			doubleExt := ext + ext
+			if strings.Contains(path, doubleExt) {
+				path = strings.Replace(path, doubleExt, ext, 1)
+			}
+		}
+
+		// 构建新的图片路径
+		newPath := "./" + mdName + ".assets/" + filepath.Base(path)
+
+		// 返回更新后的图片标记
+		return parts[1] + "\"" + newPath + "\"" + parts[3]
 	})
 
 	return updatedContent

@@ -10,7 +10,7 @@ const (
 const (
 	PromptTemplatePath = "请输入模板文件路径（如 templates/template.md）："
 	PromptConfigPath   = "请输入配置文件路径（如 D:/config.yaml，直接回车则使用工具的当前目录的config.yaml）："
-	PromptVersion      = "请输入版本号（如 1.0.1）："
+	PromptVersion      = "请输入文件名中的版本号（如 1.0.1）："
 )
 
 // 成功消息
